@@ -1,15 +1,197 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel do Filiado</title>
-  </head>
-  <body>
-    <!-- Elemento onde o seu aplicativo React será renderizado -->
-    <div id="root"></div>
+    <!-- Tailwind CSS para estilização rápida e bonita -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase JS Client via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-100 font-sans">
 
-    <!-- Script principal do projeto (ajuste o caminho se necessário para src/main.jsx ou src/index.js) -->
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+    <div id="app" class="max-w-4xl mx-auto p-6"></div>
+
+    <script>
+        // Configuração do Supabase (substitua pelas suas chaves)
+        const SUPABASE_URL = 'SUA_URL_DO_SUPABASE';
+        const SUPABASE_ANON_KEY = 'SUA_CHAVE_ANON_SUPABASE';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let session = null;
+        let clientes = [];
+        let editandoId = null;
+
+        async function init() {
+            const { data } = await supabase.auth.getSession();
+            session = data.session;
+            
+            supabase.auth.onAuthStateChange((_event, _session) => {
+                session = _session;
+                render();
+                if (session) buscarClientes();
+            });
+
+            render();
+            if (session) {
+                buscarClientes();
+            }
+        }
+
+        async function buscarClientes() {
+            const { data, error } = await supabase.from('clientes').select('*').order('data_vencimento', { ascending: true });
+            if (!error) {
+                clientes = data || [];
+                render();
+            }
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const { error } = await supabase.auth.signInWithPassword({ email, password });
+            if (error) alert('Erro ao entrar: ' + error.message);
+        }
+
+        async function handleLogout() {
+            await supabase.auth.signOut();
+        }
+
+        async function salvarCliente(e) {
+            e.preventDefault();
+            const nome = document.getElementById('nome').value;
+            const whatsapp = document.getElementById('whatsapp').value;
+            const valor_mensal = parseFloat(document.getElementById('valor_mensal').value);
+            const data_vencimento = document.getElementById('data_vencimento').value;
+
+            if (editandoId) {
+                await supabase.from('clientes').update({ nome, whatsapp, valor_mensal, data_vencimento }).eq('id', editandoId);
+                editandoId = null;
+            } else {
+                await supabase.from('clientes').insert([{ nome, whatsapp, valor_mensal, data_vencimento, status: 'ativo' }]);
+            }
+            buscarClientes();
+        }
+
+        async function deletarCliente(id) {
+            if (confirm('Deseja excluir este cliente?')) {
+                await supabase.from('clientes').delete().eq('id', id);
+                buscarClientes();
+            }
+        }
+
+        async function renovarCliente(id, dataAtualStr) {
+            const dataAtual = new Date(dataAtualStr);
+            dataAtual.setDate(dataAtual.getDate() + 30);
+            const novaData = dataAtual.toISOString().split('T')[0];
+
+            await supabase.from('clientes').update({ data_vencimento: novaData, status: 'ativo' }).eq('id', id);
+            buscarClientes();
+        }
+
+        function prepararEdicao(id) {
+            const c = clientes.find(item => item.id === id);
+            if (c) {
+                editandoId = c.id;
+                document.getElementById('nome').value = c.nome;
+                document.getElementById('whatsapp').value = c.whatsapp || '';
+                document.getElementById('valor_mensal').value = c.valor_mensal;
+                document.getElementById('data_vencimento').value = c.data_vencimento;
+                document.getElementById('btn-submit').innerText = 'Salvar Alterações';
+            }
+        }
+
+        function render() {
+            const app = document.getElementById('app');
+
+            if (!session) {
+                app.innerHTML = `
+                    <div class="max-w-md mx-auto mt-20 bg-white p-8 rounded-lg shadow border border-gray-200">
+                        <h2 class="text-2xl font-bold mb-6 text-gray-800 text-center">Login - Painel</h2>
+                        <form onsubmit="handleLogin(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
+                                <input type="email" id="email" required class="w-full p-2 border rounded border-gray-300">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+                                <input type="password" id="password" required class="w-full p-2 border rounded border-gray-300">
+                            </div>
+                            <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded font-bold hover:bg-blue-700">Entrar</button>
+                        </form>
+                    </div>
+                `;
+                return;
+            }
+
+            const totalFaturado = clientes
+                .filter(c => c.status === 'ativo')
+                .reduce((acc, c) => acc + Number(c.valor_mensal), 0);
+
+            app.innerHTML = `
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-3xl font-bold text-gray-800">Painel do Filiado</h2>
+                    <button onclick="handleLogout()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">Sair</button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                    <div class="bg-blue-50 p-6 rounded-lg border border-blue-200 shadow-sm">
+                        <h3 class="text-sm font-semibold text-blue-800 uppercase">Faturamento Total Ativo</h3>
+                        <p class="text-3xl font-bold text-blue-900 mt-2">R$ ${totalFaturado.toFixed(2)}</p>
+                    </div>
+                    <div class="bg-teal-50 p-6 rounded-lg border border-teal-200 shadow-sm">
+                        <h3 class="text-sm font-semibold text-teal-800 uppercase">Valor a Enviar no Mês</h3>
+                        <p class="text-3xl font-bold text-teal-900 mt-2">R$ ${totalFaturado.toFixed(2)}</p>
+                    </div>
+                </div>
+
+                <form onsubmit="salvarCliente(event)" class="bg-white p-6 rounded-lg shadow border border-gray-200 mb-8">
+                    <h3 class="text-lg font-bold mb-4 text-gray-700">${editandoId ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <input type="text" id="nome" placeholder="Nome do Cliente" required class="p-2 border rounded border-gray-300">
+                        <input type="text" id="whatsapp" placeholder="WhatsApp" class="p-2 border rounded border-gray-300">
+                        <input type="number" step="0.01" id="valor_mensal" placeholder="Valor Personalizado (R$)" required class="p-2 border rounded border-gray-300">
+                        <input type="date" id="data_vencimento" required class="p-2 border rounded border-gray-300">
+                    </div>
+                    <button type="submit" id="btn-submit" class="bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-700">Cadastrar Cliente</button>
+                </form>
+
+                <h3 class="text-xl font-bold mb-4 text-gray-800">Meus Clientes</h3>
+                <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+                    <table class="w-full border-collapse text-left">
+                        <thead>
+                            <tr class="bg-gray-100 border-b border-gray-200">
+                                <th class="p-3 text-sm font-semibold text-gray-600">Nome</th>
+                                <th class="p-3 text-sm font-semibold text-gray-600">WhatsApp</th>
+                                <th class="p-3 text-sm font-semibold text-gray-600">Valor</th>
+                                <th class="p-3 text-sm font-semibold text-gray-600">Vencimento</th>
+                                <th class="p-3 text-sm font-semibold text-gray-600">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${clientes.length === 0 ? `<tr><td colspan="5" class="p-4 text-center text-gray-500">Nenhum cliente cadastrado.</td></tr>` : ''}
+                            ${clientes.map(c => `
+                                <tr class="border-b border-gray-100 hover:bg-gray-50">
+                                    <td class="p-3 text-gray-800">${c.nome}</td>
+                                    <td class="p-3 text-gray-800">${c.whatsapp || '-'}</td>
+                                    <td class="p-3 text-gray-800">R$ ${Number(c.valor_mensal).toFixed(2)}</td>
+                                    <td class="p-3 text-gray-800">${c.data_vencimento.split('-').reverse().join('/')}</td>
+                                    <td class="p-3 space-x-2">
+                                        <button onclick="renovarCliente('${c.id}', '${c.data_vencimento}')" class="bg-green-600 text-white px-2 py-1 text-xs rounded hover:bg-green-700">Renovar</button>
+                                        <button onclick="prepararEdicao('${c.id}')" class="bg-yellow-500 text-white px-2 py-1 text-xs rounded hover:bg-yellow-600">Editar</button>
+                                        <button onclick="deletarCliente('${c.id}')" class="bg-red-500 text-white px-2 py-1 text-xs rounded hover:bg-red-600">Deletar</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        init();
+    </script>
+</body>
 </html>
