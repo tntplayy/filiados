@@ -2,11 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 // Inicialize o Supabase (substitua pelas suas chaves)
-const supabaseUrl = 'https://pcbhozlfjbtozglzlols.supabase.co';
-const supabaseKey = 'sb_publishable_7dNwLnpNrBvw9ZDcfsxvsA_fgye91ay';
+const supabaseUrl = 'SUA_URL_DO_SUPABASE';
+const supabaseKey = 'SUA_CHAVE_ANON_SUPABASE';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-export default function PainelFiliado() {
+export default function App() {
+  const [session, setSession] = useState(null);
+  const [loadingSession, setLoadingSession] = useState(true);
+
+  // Estados de autenticação (Login / Cadastro)
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [authError, setAuthError] = useState('');
+
+  // Estados do Painel de Clientes
   const [clientes, setClientes] = useState([]);
   const [nome, setNome] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
@@ -14,22 +24,55 @@ export default function PainelFiliado() {
   const [dataVencimento, setDataVencimento] = useState('');
   const [editandoId, setEditandoId] = useState(null);
 
-  // Buscar clientes ao carregar a página
+  // Verificar sessão ativa ao carregar
   useEffect(() => {
-    buscarClientes();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoadingSession(false);
+    });
+
+    // Escutar mudanças na autenticação (login, logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  // Buscar clientes sempre que houver uma sessão ativa
+  useEffect(() => {
+    if (session) {
+      buscarClientes();
+    }
+  }, [session]);
+
+  async function handleAuth(e) {
+    e.preventDefault();
+    setAuthError('');
+
+    if (isRegistering) {
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) setAuthError(error.message);
+      else alert('Cadastro realizado! Verifique seu e-mail se necessário ou faça login.');
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) setAuthError('E-mail ou senha incorretos.');
+    }
+  }
+
+  async function logout() {
+    await supabase.auth.signOut();
+  }
 
   async function buscarClientes() {
     const { data, error } = await supabase.from('clientes').select('*').order('data_vencimento', { ascending: true });
     if (!error) setClientes(data);
   }
 
-  // Cadastrar ou Atualizar Cliente
   async function salvarCliente(e) {
     e.preventDefault();
     
     if (editandoId) {
-      // Editar
       await supabase.from('clientes').update({
         nome,
         whatsapp,
@@ -38,7 +81,6 @@ export default function PainelFiliado() {
       }).eq('id', editandoId);
       setEditandoId(null);
     } else {
-      // Cadastrar
       await supabase.from('clientes').insert([{
         nome,
         whatsapp,
@@ -48,7 +90,6 @@ export default function PainelFiliado() {
       }]);
     }
 
-    // Limpar campos
     setNome('');
     setWhatsapp('');
     setValorMensal('');
@@ -56,7 +97,6 @@ export default function PainelFiliado() {
     buscarClientes();
   }
 
-  // Deletar Cliente
   async function deletarCliente(id) {
     if (confirm('Tem certeza que deseja excluir este cliente?')) {
       await supabase.from('clientes').delete().eq('id', id);
@@ -64,7 +104,6 @@ export default function PainelFiliado() {
     }
   }
 
-  // Preparar para Editar
   function carregarParaEdicao(cliente) {
     setEditandoId(cliente.id);
     setNome(cliente.nome);
@@ -73,7 +112,6 @@ export default function PainelFiliado() {
     setDataVencimento(cliente.data_vencimento);
   }
 
-  // Renovar Cliente (+30 dias na data de vencimento)
   async function renovarCliente(cliente) {
     const dataAtual = new Date(cliente.data_vencimento);
     dataAtual.setDate(dataAtual.getDate() + 30);
@@ -83,18 +121,66 @@ export default function PainelFiliado() {
     buscarClientes();
   }
 
-  // Cálculo da Dashboard (Total do Mês)
   const totalFaturadoMes = clientes
     .filter(c => c.status === 'ativo')
     .reduce((acc, c) => acc + Number(c.valor_mensal), 0);
 
-  // Defina aqui a porcentagem de repasse (ex: 70% para ele, 30% seu, ou 100% se o valor inteiro for dele)
-  const percentualRepasse = 1.0; // 1.0 = 100% do valor gerado
+  const percentualRepasse = 1.0; 
   const valorParaEnviar = totalFaturadoMes * percentualRepasse;
 
+  if (loadingSession) {
+    return <div style={{ textAlign: 'center', marginTop: '50px' }}>Carregando...</div>;
+  }
+
+  // TELA DE LOGIN / CADASTRO SE NÃO HOUVER SESSÃO
+  if (!session) {
+    return (
+      <div style={{ maxWidth: '400px', margin: '80px auto', padding: '30px', border: '1px solid #ccc', borderRadius: '8px', fontFamily: 'Arial, sans-serif' }}>
+        <h2>{isRegistering ? 'Criar Conta' : 'Login - Painel'}</h2>
+        {authError && <p style={{ color: 'red', fontSize: '14px' }}>{authError}</p>}
+        <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
+          <input 
+            type="email" 
+            placeholder="E-mail" 
+            value={email} 
+            onChange={e => setEmail(e.target.value)} 
+            required 
+            style={{ padding: '10px', fontSize: '14px' }}
+          />
+          <input 
+            type="password" 
+            placeholder="Senha" 
+            value={password} 
+            onChange={e => setPassword(e.target.value)} 
+            required 
+            style={{ padding: '10px', fontSize: '14px' }}
+          />
+          <button type="submit" style={{ background: '#3182ce', color: '#fff', padding: '10px', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+            {isRegistering ? 'Cadastrar' : 'Entrar'}
+          </button>
+        </form>
+        <p style={{ marginTop: '15px', textAlign: 'center', fontSize: '14px' }}>
+          {isRegistering ? 'Já tem uma conta?' : 'Não tem conta?'} {' '}
+          <span 
+            onClick={() => setIsRegistering(!isRegistering)} 
+            style={{ color: '#3182ce', cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            {isRegistering ? 'Faça login' : 'Cadastre-se'}
+          </span>
+        </p>
+      </div>
+    );
+  }
+
+  // PAINEL COMPLETO (EXIBIDO APENAS SE LOGADO)
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '900px', margin: '0 auto' }}>
-      <h2>Painel do Filiado</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2>Painel do Filiado</h2>
+        <button onClick={logout} style={{ background: '#e53e3e', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer' }}>
+          Sair
+        </button>
+      </div>
 
       {/* DASHBOARD */}
       <div style={{ display: 'flex', gap: '20px', marginBottom: '30px' }}>
