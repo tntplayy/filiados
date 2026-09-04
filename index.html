@@ -4,46 +4,70 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel do Filiado</title>
-    <!-- Tailwind CSS para estilização rápida e bonita -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Supabase JS Client via CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="bg-gray-100 font-sans">
 
-    <div id="app" class="max-w-4xl mx-auto p-6"></div>
+    <div id="app" class="max-w-4xl mx-auto p-6">
+        <div class="text-center mt-20 text-gray-600">Carregando painel...</div>
+    </div>
 
     <script>
-        // Configuração do Supabase (substitua pelas suas chaves)
-        const SUPABASE_URL = 'SUA_URL_DO_SUPABASE';
-        const SUPABASE_ANON_KEY = 'SUA_CHAVE_ANON_SUPABASE';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const SUPABASE_URL = 'https://pcbhozlfjbtozglzlols.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_7dNwLnpNrBvw9ZDcfsxvsA_fgye91ay';
 
+        let supabase = null;
         let session = null;
         let clientes = [];
         let editandoId = null;
 
-        async function init() {
-            const { data } = await supabase.auth.getSession();
-            session = data.session;
+        try {
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             
+            // Ouve mudanças de autenticação em tempo real
             supabase.auth.onAuthStateChange((_event, _session) => {
                 session = _session;
                 render();
                 if (session) buscarClientes();
             });
 
-            render();
-            if (session) {
-                buscarClientes();
-            }
+            // Timeout de segurança para evitar loop infinito de carregamento
+            const timeout = setTimeout(() => {
+                if (!session && document.getElementById('app').innerHTML.includes('Carregando')) {
+                    render(); // Força renderizar a tela de login se demorar muito
+                }
+            }, 3000);
+
+            // Tenta pegar a sessão atual
+            supabase.auth.getSession().then(({ data }) => {
+                clearTimeout(timeout);
+                session = data?.session || null;
+                render();
+                if (session) {
+                    buscarClientes();
+                }
+            }).catch(err => {
+                clearTimeout(timeout);
+                console.error("Erro ao obter sessão:", err);
+                render();
+            });
+
+        } catch (err) {
+            document.getElementById('app').innerHTML = `<div class="p-6 text-center text-red-600 font-bold">Erro ao iniciar: ${err.message}</div>`;
         }
 
         async function buscarClientes() {
-            const { data, error } = await supabase.from('clientes').select('*').order('data_vencimento', { ascending: true });
-            if (!error) {
-                clientes = data || [];
-                render();
+            try {
+                const { data, error } = await supabase.from('clientes').select('*').order('data_vencimento', { ascending: true });
+                if (!error) {
+                    clientes = data || [];
+                    render();
+                } else {
+                    console.error("Erro ao buscar clientes:", error.message);
+                }
+            } catch (err) {
+                console.error(err);
             }
         }
 
@@ -51,8 +75,11 @@
             e.preventDefault();
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
+            
             const { error } = await supabase.auth.signInWithPassword({ email, password });
-            if (error) alert('Erro ao entrar: ' + error.message);
+            if (error) {
+                alert('Erro ao entrar: ' + error.message);
+            }
         }
 
         async function handleLogout() {
@@ -73,6 +100,9 @@
                 await supabase.from('clientes').insert([{ nome, whatsapp, valor_mensal, data_vencimento, status: 'ativo' }]);
             }
             buscarClientes();
+            e.target.reset();
+            const btn = document.getElementById('btn-submit');
+            if(btn) btn.innerText = 'Cadastrar Cliente';
         }
 
         async function deletarCliente(id) {
@@ -190,8 +220,6 @@
                 </div>
             `;
         }
-
-        init();
     </script>
 </body>
 </html>
