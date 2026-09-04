@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel do Filiado</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Usando o cdnjs que costuma ter melhor compatibilidade global -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.39.8/supabase.min.js"></script>
+    <!-- Importando via unpkg que costuma ter alta disponibilidade -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
 <body class="bg-gray-100 font-sans">
 
@@ -26,24 +26,23 @@
         window.addEventListener('DOMContentLoaded', () => {
             const statusDiv = document.getElementById('status-msg');
             try {
-                if (typeof window.supabase === 'undefined') {
-                    throw new Error('A biblioteca do Supabase não foi injetada pelo CDN.');
+                // Verifica de forma segura se o objeto global do Supabase carregou
+                const supabaseLib = window.supabase || window.supabaseJs;
+                
+                if (!supabaseLib || typeof supabaseLib.createClient !== 'function') {
+                    throw new Error('A biblioteca do Supabase não pôde ser inicializada.');
                 }
 
-                statusDiv.innerText = 'Conectando ao Supabase...';
-                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                supabase = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-                statusDiv.innerText = 'Verificando sessão...';
-                
-                supabase.auth.getSession().then(({ data, error }) => {
-                    if (error) console.error(error);
+                supabase.auth.getSession().then(({ data }) => {
                     session = data?.session || null;
                     render();
                     if (session) {
                         buscarClientes();
                     }
-                }).catch(err => {
-                    statusDiv.innerHTML = `<span class="text-red-600">Erro na sessão: ${err.message}</span>`;
+                }).catch(() => {
+                    render();
                 });
 
                 supabase.auth.onAuthStateChange((_event, _session) => {
