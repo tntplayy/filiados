@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel do Filiado</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body class="bg-gray-100 font-sans">
 
     <div id="app" class="max-w-4xl mx-auto p-6">
-        <div class="text-center mt-20 text-gray-600">Carregando painel...</div>
+        <div class="text-center mt-20 text-gray-600 text-lg font-medium">Carregando painel...</div>
     </div>
 
     <script>
@@ -22,40 +22,39 @@
         let clientes = [];
         let editandoId = null;
 
-        try {
-            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-            
-            // Ouve mudanças de autenticação em tempo real
-            supabase.auth.onAuthStateChange((_event, _session) => {
-                session = _session;
-                render();
-                if (session) buscarClientes();
-            });
-
-            // Timeout de segurança para evitar loop infinito de carregamento
-            const timeout = setTimeout(() => {
-                if (!session && document.getElementById('app').innerHTML.includes('Carregando')) {
-                    render(); // Força renderizar a tela de login se demorar muito
+        window.addEventListener('DOMContentLoaded', () => {
+            try {
+                if (!window.supabase) {
+                    throw new Error('A biblioteca do Supabase não carregou.');
                 }
-            }, 3000);
+                
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                
+                supabase.auth.onAuthStateChange((_event, _session) => {
+                    session = _session;
+                    render();
+                    if (session) buscarClientes();
+                });
 
-            // Tenta pegar a sessão atual
-            supabase.auth.getSession().then(({ data }) => {
-                clearTimeout(timeout);
-                session = data?.session || null;
-                render();
-                if (session) {
-                    buscarClientes();
-                }
-            }).catch(err => {
-                clearTimeout(timeout);
-                console.error("Erro ao obter sessão:", err);
-                render();
-            });
+                supabase.auth.getSession().then(({ data }) => {
+                    session = data?.session || null;
+                    render();
+                    if (session) {
+                        buscarClientes();
+                    }
+                }).catch(() => {
+                    render();
+                });
 
-        } catch (err) {
-            document.getElementById('app').innerHTML = `<div class="p-6 text-center text-red-600 font-bold">Erro ao iniciar: ${err.message}</div>`;
-        }
+            } catch (err) {
+                document.getElementById('app').innerHTML = `
+                    <div class="max-w-md mx-auto mt-20 bg-red-50 border border-red-200 p-6 rounded-lg text-center shadow">
+                        <h2 class="text-xl font-bold text-red-700 mb-2">Erro ao carregar aplicação</h2>
+                        <p class="text-sm text-red-600">${err.message}</p>
+                    </div>
+                `;
+            }
+        });
 
         async function buscarClientes() {
             try {
@@ -63,8 +62,6 @@
                 if (!error) {
                     clientes = data || [];
                     render();
-                } else {
-                    console.error("Erro ao buscar clientes:", error.message);
                 }
             } catch (err) {
                 console.error(err);
