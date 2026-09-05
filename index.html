@@ -30,6 +30,7 @@
 
     <!-- Container do Modal Isolado -->
     <div id="modal-container"></div>
+    <div id="modal-historico-container"></div>
 
     <script type="module">
         import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -46,6 +47,10 @@
         let isModalOpen = false;
         let editandoId = null;
         let termoBusca = '';
+
+        let isModalHistOpen = false;
+        let editandoHistId = null;
+        let histFormData = { nome_cliente: '', valor_mensal: '', valor_filiado: '' };
         
         let formData = {
             nome: '',
@@ -162,6 +167,27 @@
             window.renderModal();
         };
 
+        // Gerenciar edição de item do histórico do mês específico
+        window.abrirModalHistorico = function(id) {
+            editandoHistId = id;
+            const h = historico.find(item => item.id === id);
+            if (h) {
+                histFormData = {
+                    nome_cliente: h.nome_cliente || '',
+                    valor_mensal: h.valor_mensal || '',
+                    valor_filiado: h.valor_filiado || ''
+                };
+                isModalHistOpen = true;
+                window.renderModalHistorico();
+            }
+        };
+
+        window.fecharModalHistorico = function() {
+            editandoHistId = null;
+            isModalHistOpen = false;
+            window.renderModalHistorico();
+        };
+
         function vincularInputsModal() {
             ['nome', 'whatsapp', 'valor_mensal', 'valor_filiado', 'data_vencimento'].forEach(campo => {
                 const el = document.getElementById(campo);
@@ -169,6 +195,19 @@
                     el.value = formData[campo];
                     el.addEventListener('input', (e) => {
                         formData[campo] = e.target.value;
+                    });
+                }
+            });
+        }
+
+        function vincularInputsHistorico() {
+            ['hist_nome', 'hist_valor_mensal', 'hist_valor_filiado'].forEach(campo => {
+                const prop = campo.replace('hist_', '');
+                const el = document.getElementById(campo);
+                if (el) {
+                    el.value = histFormData[prop];
+                    el.addEventListener('input', (e) => {
+                        histFormData[prop] = e.target.value;
                     });
                 }
             });
@@ -209,6 +248,27 @@
             window.fecharModal();
             window.buscarClientes();
             window.buscarHistorico();
+        };
+
+        window.salvarHistoricoEditado = async function(e) {
+            e.preventDefault();
+            if (!editandoHistId) return;
+
+            await supabase.from('historico_faturamento').update({
+                nome_cliente: histFormData.nome_cliente,
+                valor_mensal: parseFloat(histFormData.valor_mensal),
+                valor_filiado: parseFloat(histFormData.valor_filiado)
+            }).eq('id', editandoHistId);
+
+            window.fecharModalHistorico();
+            window.buscarHistorico();
+        };
+
+        window.deletarHistoricoItem = async function(id) {
+            if (confirm('Deseja remover este registro do faturamento deste mês?')) {
+                await supabase.from('historico_faturamento').delete().eq('id', id);
+                window.buscarHistorico();
+            }
         };
 
         window.deletarCliente = async function(id) {
@@ -300,6 +360,57 @@
             vincularInputsModal();
         };
 
+        window.renderModalHistorico = function() {
+            const container = document.getElementById('modal-historico-container');
+            if (!isModalHistOpen) {
+                container.innerHTML = '';
+                return;
+            }
+            if (document.getElementById('modal-hist-box')) return;
+
+            container.innerHTML = `
+                <div id="modal-hist-box" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+                    <div class="bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl border border-slate-800 relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-500 to-orange-600"></div>
+                        
+                        <div class="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/40">
+                            <h3 class="text-base font-black text-white tracking-wide">EDITAR FATURAMENTO DO MÊS</h3>
+                            <button onclick="window.fecharModalHistorico()" class="text-slate-400 hover:text-white bg-slate-800 p-2 rounded-xl">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </button>
+                        </div>
+                        
+                        <form onsubmit="window.salvarHistoricoEditado(event)" class="p-5 space-y-3.5">
+                            <div>
+                                <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nome do Cliente (neste registro)</label>
+                                <input type="text" id="hist_nome" required class="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs md:text-sm focus:border-cyan-500 outline-none">
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Valor Total (R$)</label>
+                                    <input type="number" step="0.01" id="hist_valor_mensal" required class="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs md:text-sm font-bold focus:border-cyan-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-cyan-400 uppercase tracking-wider mb-1">Valor Filiado (R$)</label>
+                                    <input type="number" step="0.01" id="hist_valor_filiado" required class="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-cyan-400 text-xs md:text-sm font-bold focus:border-cyan-500 outline-none">
+                                </div>
+                            </div>
+                            
+                            <div class="pt-2 flex gap-3">
+                                <button type="button" onclick="window.fecharModalHistorico()" class="flex-1 bg-slate-950 text-slate-300 p-3 rounded-xl text-xs md:text-sm font-bold border border-slate-800">
+                                    CANCELAR
+                                </button>
+                                <button type="submit" class="flex-1 bg-gradient-to-r from-yellow-600 to-orange-600 text-white p-3 rounded-xl text-xs md:text-sm font-bold tracking-wide shadow-md">
+                                    ATUALIZAR MÊS
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+            vincularInputsHistorico();
+        };
+
         window.render = function() {
             const app = document.getElementById('app');
 
@@ -338,12 +449,9 @@
                 return;
             }
 
-            // Descobre o mês seguinte com base no filtro selecionado (ex: selecionou 2026-09, o pagamento/destaque vira 2026-10)
             const [anoFiltro, mesFiltro] = filtroMes.split('-').map(Number);
-            const dataProximoMes = new Date(anoFiltro, mesFiltro, 1); // O construtor avança automaticamente o mês
+            const dataProximoMes = new Date(anoFiltro, mesFiltro, 1);
             const proximoMesStr = `${dataProximoMes.getFullYear()}-${String(dataProximoMes.getMonth() + 1).padStart(2, '0')}`;
-            
-            // Formata o nome do mês para exibição em destaque
             const nomeMesProximo = dataProximoMes.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
             const historicoProximoMes = historico.filter(h => h.mes_referencia === proximoMesStr);
@@ -417,7 +525,7 @@
                                     </div>
                                 </div>
 
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 mb-10">
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 mb-8">
                                     <div class="bg-slate-900 p-5 md:p-6 rounded-2xl border border-slate-800 shadow-xl relative overflow-hidden">
                                         <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Assinantes (${nomeMesProximo})</h3>
                                         <p class="text-3xl md:text-4xl font-black text-white">${historicoProximoMes.length} <span class="text-xs text-slate-500 font-normal">registros</span></p>
@@ -435,6 +543,44 @@
                                         <p class="text-3xl md:text-4xl font-black text-white">
                                             <span class="text-lg text-cyan-600">R$</span> ${totalFiliado.toFixed(2)}
                                         </p>
+                                    </div>
+                                </div>
+
+                                <!-- TABELA DE DETALHAMENTO E EDIÇÃO DO MÊS SELECIONADO -->
+                                <div class="bg-slate-900 rounded-2xl shadow-xl border border-slate-800 overflow-hidden flex flex-col mb-6">
+                                    <div class="p-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center">
+                                        <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">Detalhamento e Correção de Lançamentos (${nomeMesProximo})</h3>
+                                        <span class="text-[10px] text-slate-500">Edite apenas os valores deste mês caso houve erro de renovação</span>
+                                    </div>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-left border-collapse whitespace-nowrap text-xs md:text-sm">
+                                            <thead class="bg-slate-950/80 border-b border-slate-800 text-[11px] text-slate-400 uppercase">
+                                                <tr>
+                                                    <th class="p-3.5">Cliente (Registrado)</th>
+                                                    <th class="p-3.5">Valor Total</th>
+                                                    <th class="p-3.5">Valor Filiado</th>
+                                                    <th class="p-3.5 text-right">Ações no Mês</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-slate-800">
+                                                ${historicoProximoMes.length === 0 ? `<tr><td colspan="4" class="p-6 text-center text-slate-500">Nenhum registro encontrado para este mês.</td></tr>` : ''}
+                                                ${historicoProximoMes.map(h => `
+                                                    <tr class="hover:bg-slate-800/40 transition-colors">
+                                                        <td class="p-3.5 font-bold text-slate-200">${h.nome_cliente}</td>
+                                                        <td class="p-3.5 text-slate-300">R$ ${Number(h.valor_mensal || 0).toFixed(2)}</td>
+                                                        <td class="p-3.5 text-cyan-400 font-bold">R$ ${Number(h.valor_filiado || 0).toFixed(2)}</td>
+                                                        <td class="p-3.5 text-right space-x-2">
+                                                            <button onclick="window.abrirModalHistorico('${h.id}')" class="bg-slate-800 hover:bg-yellow-600/20 text-slate-400 hover:text-yellow-400 p-2 rounded-lg" title="Editar este mês">
+                                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                            </button>
+                                                            <button onclick="window.deletarHistoricoItem('${h.id}')" class="bg-slate-800 hover:bg-red-600/20 text-slate-400 hover:text-red-400 p-2 rounded-lg" title="Remover deste mês">
+                                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                `).join('')}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
                             </div>
@@ -501,7 +647,7 @@
                                                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                                                                 </button>
                                                                 <button onclick="window.deletarCliente('${c.id}')" title="Deletar" class="bg-slate-800 hover:bg-red-600/20 text-slate-400 hover:text-red-400 p-2 rounded-lg">
-                                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2.5 2.5 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                                                 </button>
                                                             </td>
                                                         </tr>
